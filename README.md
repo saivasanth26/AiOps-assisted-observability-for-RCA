@@ -58,8 +58,6 @@ The LLM is strictly limited to formatting output. It never drives detection, RCA
 
 ## System Architecture
 ```
-## System Architecture
-```
 ╔══════════════════════════════════════════════════════════════╗
 ║                  LAYER 1 — INSTRUMENTATION                   ║
 ║                                                              ║
