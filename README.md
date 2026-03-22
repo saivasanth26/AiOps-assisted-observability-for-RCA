@@ -462,5 +462,187 @@ Testing revealed that `[1m]` windows returned empty results due to the Prometheu
 | `agent.py` | ✅ Complete |
 
 ---
+---
+
+## Run Guide
+
+### Prerequisites
+- 2-node Kubernetes cluster running
+- OTel demo deployed in `otel-demo` namespace
+- Jaeger v1.52 pod deployed (`jaeger-query`)
+- Ollama installed with Mistral pulled
+- Python 3.12 with venv
+
+---
+
+### Step 1 — Verify Cluster
+```bash
+kubectl get nodes
+```
+
+Expected:
+```
+k8s-master   Ready
+k8s-node1    Ready
+```
+
+---
+
+### Step 2 — Verify OTel Demo Pods
+```bash
+kubectl get pods -n otel-demo
+```
+
+All pods should show `Running`. If any are down:
+```bash
+kubectl rollout restart deployment -n otel-demo
+```
+
+---
+
+### Step 3 — Verify Flannel
+```bash
+kubectl get pods -n kube-flannel
+```
+
+Both pods should show `Running`. If not:
+```bash
+kubectl rollout restart daemonset/kube-flannel-ds -n kube-flannel
+```
+
+---
+
+### Step 4 — Verify Jaeger Query Pod
+```bash
+kubectl get pods -n otel-demo | grep jaeger-query
+```
+
+If not running:
+```bash
+kubectl apply -f ~/AiOps/jaeger-v1.yaml
+```
+
+---
+
+### Step 5 — Start Port Forwards
+
+Open a dedicated terminal and run:
+```bash
+kubectl port-forward svc/prometheus 9090:9090 -n otel-demo &
+kubectl port-forward svc/jaeger-query 16686:16686 -n otel-demo &
+kubectl port-forward svc/frontend-proxy 8080:8080 -n otel-demo &
+```
+
+Verify:
+```bash
+curl -s http://localhost:9090/-/healthy && echo "Prometheus OK"
+curl -s http://localhost:16686/api/services | python3 -m json.tool | grep recommendation && echo "Jaeger OK"
+curl -s http://localhost:8080 -o /dev/null -w "%{http_code}" && echo " Frontend OK"
+```
+
+---
+
+### Step 6 — Start Ollama
+```bash
+ollama serve &
+```
+
+Verify:
+```bash
+curl -s http://localhost:11434/api/tags | python3 -m json.tool | grep mistral
+```
+
+---
+
+### Step 7 — Activate Virtual Environment
+```bash
+cd ~/AiOps
+source venv/bin/activate
+```
+
+---
+
+### Step 8 — Feature Flags Setup
+
+Go to `http://localhost:8080/feature` and configure before starting the agent:
+
+| Flag | State |
+|---|---|
+| `loadGeneratorFloodHomepage` | `on` |
+| All other flags | `off` |
+
+---
+
+### Step 9 — Delete Old Model (Fresh Start)
+```bash
+rm ~/AiOps/data/baseline/*.pkl ~/AiOps/data/baseline/*.npy 2>/dev/null
+echo "Old model cleared"
+```
+
+Skip this step to reuse existing trained model.
+
+---
+
+### Step 10 — Run the Agent
+```bash
+cd ~/AiOps
+python3 agent.py
+```
+
+Baseline collects 20 samples (~200s), then monitoring starts automatically.
+
+---
+
+### Step 11 — Inject Anomaly
+
+Once monitoring loop starts, go to `http://localhost:8080/feature` and enable:
+
+| Flag | State |
+|---|---|
+| `productCatalogFailure` | `on` |
+
+Within 2-3 cycles the incident report will print automatically.
+
+---
+
+### Stopping the Agent
+```bash
+Ctrl+C
+```
+
+---
+
+### Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| Metrics returning empty | `curl -s http://10.96.167.218:9090/api/v1/query?query=up` |
+| Jaeger returning HTML | `kubectl rollout restart deployment/jaeger-query -n otel-demo` |
+| Ollama not responding | `ollama serve &` then `ollama list` |
+| All pods crashing | Check Flannel and CoreDNS — see Infrastructure Setup section |
+| No anomaly firing | Confirm `productCatalogFailure` is `on` and wait 3-4 cycles |
+
+---
+
+### Service URLs
+
+| Service | URL |
+|---|---|
+| OTel Demo Frontend | `http://localhost:8080` |
+| Feature Flags UI | `http://localhost:8080/feature` |
+| Prometheus UI | `http://localhost:9090` |
+| Jaeger UI | `http://localhost:8080/jaeger/ui` |
+| Grafana | `http://localhost:8080/grafana` |
+| Load Generator | `http://localhost:8080/loadgen` |
+
+---
+
+### Port Forward Reference
+
+| Service | Command |
+|---|---|
+| Prometheus | `kubectl port-forward svc/prometheus 9090:9090 -n otel-demo` |
+| Jaeger Query | `kubectl port-forward svc/jaeger-query 16686:16686 -n otel-demo` |
+| Frontend Proxy | `kubectl port-forward svc/frontend-proxy 8080:8080 -n otel-demo` |
 
 *Cloud Computing Master's Project — AIOps Observability System v0.1.0-alpha*
