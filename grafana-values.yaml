@@ -1,6 +1,0 @@
-grafana:
-  extraEnvVars: []
-  envValueFrom: {}
-  env:
-    GF_INSTALL_PLUGINS: ""
-    GF_PLUGINS_PREINSTALL: ""
